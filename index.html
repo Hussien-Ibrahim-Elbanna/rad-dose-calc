@@ -1,0 +1,2088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radiology Dose Calculator</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+            min-height: 100vh;
+            padding: 20px;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                radial-gradient(circle at 20% 50%, rgba(100, 200, 255, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(100, 150, 255, 0.05) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4), 0 0 40px rgba(100, 180, 255, 0.1);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #0e1b2e 0%, #1a3a52 50%, #2d5f7f 100%);
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            border-bottom: 4px solid #4a9fd8;
+        }
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                radial-gradient(circle at 20% 30%, rgba(74, 159, 216, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(74, 159, 216, 0.08) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        header h1 {
+            font-size: 2.8em;
+            margin-bottom: 12px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+            position: relative;
+            z-index: 1;
+        }
+
+        header p {
+            font-size: 1.15em;
+            opacity: 0.93;
+            font-weight: 400;
+            letter-spacing: 1px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            padding: 50px;
+            background: linear-gradient(135deg, #f5f8fa 0%, #f0f5fa 100%);
+        }
+
+        .input-section, .diagram-section, .results-section, .history-section {
+            background: white;
+            padding: 35px;
+            border-radius: 15px;
+            border: 1px solid #dde5f0;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+        }
+
+        .input-section:hover, 
+        .diagram-section:hover, 
+        .results-section:hover {
+            box-shadow: 0 10px 35px rgba(74, 159, 216, 0.12);
+            border-color: #4a9fd8;
+        }
+
+        .diagram-section {
+            grid-column: 2;
+            grid-row: 1 / 3;
+            position: relative;
+        }
+
+        .diagram-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 150px;
+            height: 150px;
+            background: radial-gradient(circle, rgba(74, 159, 216, 0.08) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        .history-section {
+            grid-column: 1 / 3;
+            background: linear-gradient(135deg, #ffffff 0%, #f9fbfd 100%);
+            border-top: 4px solid #4a9fd8;
+        }
+
+        .section-title {
+            font-size: 1.6em;
+            color: #0e1b2e;
+            margin-bottom: 28px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+
+        .section-title::before {
+            content: '';
+            width: 5px;
+            height: 32px;
+            background: linear-gradient(180deg, #4a9fd8 0%, #2d5f7f 100%);
+            border-radius: 3px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+            color: #0e1b2e;
+            font-weight: 800;
+            font-size: 0.95em;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #dde5f0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            background: #f9fbfd;
+            color: #1a3a52;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #4a9fd8;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(74, 159, 216, 0.15);
+        }
+
+        input[type="text"]::placeholder,
+        input[type="number"]::placeholder {
+            color: #9ca3af;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 30px;
+        }
+
+        button {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+        }
+
+        .btn-calculate {
+            background: linear-gradient(135deg, #0e1b2e 0%, #1a3a52 50%, #2d5f7f 100%);
+            color: white;
+            box-shadow: 0 6px 20px rgba(14, 27, 46, 0.3);
+        }
+
+        .btn-calculate:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(74, 159, 216, 0.4);
+        }
+
+        .btn-export {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-export:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-export:disabled {
+            background: #d1d5db;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-clear {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-clear:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-reset {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: white;
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-reset:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Body Diagram */
+        .body-diagram {
+            background: linear-gradient(135deg, #f9fbfd 0%, #ffffff 100%);
+            border-radius: 12px;
+            padding: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 600px;
+            border: 2px dashed #4a9fd8;
+            position: relative;
+        }
+
+        .body-diagram::before {
+            content: 'Interactive Body Diagram';
+            position: absolute;
+            top: 10px;
+            left: 15px;
+            font-size: 0.85em;
+            color: #4a9fd8;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        svg {
+            max-width: 100%;
+            height: auto;
+            filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.08));
+            pointer-events: auto;
+        }
+
+        .body-part {
+            fill: #e8f4fa;
+            stroke: #4a9fd8;
+            stroke-width: 2;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.1));
+            pointer-events: auto;
+        }
+
+        .body-part:hover {
+            fill: #4a9fd8;
+            filter: drop-shadow(0 0 10px rgba(74, 159, 216, 0.6));
+            stroke-width: 2.5;
+        }
+
+        .body-part.selected {
+            fill: #2d5f7f;
+            stroke: #4a9fd8;
+            stroke-width: 3;
+            filter: drop-shadow(0 0 12px rgba(45, 95, 127, 0.7));
+        }
+
+        /* Results Section */
+        .results-wrapper {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .result-card {
+            background: linear-gradient(135deg, #f9fbfd 0%, #ffffff 100%);
+            padding: 28px;
+            border-radius: 12px;
+            border-left: 6px solid #4a9fd8;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+            transition: all 0.3s ease;
+        }
+
+        .result-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(74, 159, 216, 0.15);
+        }
+
+        .result-card.warning {
+            border-left-color: #f59e0b;
+        }
+
+        .result-card.danger {
+            border-left-color: #ef4444;
+        }
+
+        .result-label {
+            color: #4a9fd8;
+            font-size: 0.8em;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+        }
+
+        .result-value {
+            font-size: 2.4em;
+            color: #0e1b2e;
+            font-weight: 900;
+            margin-bottom: 10px;
+            letter-spacing: -1.5px;
+        }
+
+        .result-value.warning {
+            color: #f59e0b;
+        }
+
+        .result-value.danger {
+            color: #ef4444;
+        }
+
+        .result-unit {
+            font-size: 0.85em;
+            color: #6b7280;
+            font-weight: 600;
+        }
+
+        .alert {
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+            border-left: 5px solid;
+            font-weight: 600;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert.error {
+            background: #fee2e2;
+            border-left-color: #ef4444;
+            color: #991b1b;
+        }
+
+        .alert.success {
+            background: #dcfce7;
+            border-left-color: #10b981;
+            color: #166534;
+        }
+
+        .alert.warning {
+            background: #fef3c7;
+            border-left-color: #f59e0b;
+            color: #92400e;
+        }
+
+        /* History Table */
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .history-table thead {
+            background: linear-gradient(135deg, #2d5f7f 0%, #4a9fd8 100%);
+            color: white;
+        }
+
+        .history-table th {
+            padding: 14px;
+            text-align: left;
+            font-weight: 700;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .history-table td {
+            padding: 13px 14px;
+            border-bottom: 1px solid #e5e7eb;
+            color: #374151;
+        }
+
+        .history-table tbody tr:hover {
+            background: #f9fbfd;
+        }
+
+        .history-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .no-history {
+            text-align: center;
+            padding: 50px;
+            color: #9ca3af;
+            font-size: 1.05em;
+        }
+
+        /* Exam Type Pills */
+        .exam-type-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .exam-type-btn {
+            flex: 1;
+            padding: 13px;
+            border: 2px solid #e0e8f2;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 700;
+            color: #4a9fd8;
+        }
+
+        .exam-type-btn:hover {
+            border-color: #4a9fd8;
+            transform: translateY(-2px);
+        }
+
+        .exam-type-btn.active {
+            background: linear-gradient(135deg, #2d5f7f 0%, #4a9fd8 100%);
+            color: white;
+            border-color: #4a9fd8;
+            box-shadow: 0 4px 15px rgba(74, 159, 216, 0.3);
+        }
+
+        /* Progress bar */
+        .dose-progress {
+            margin-top: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #e5e7eb;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 12px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) inset;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4a9fd8 0%, #2d5f7f 100%);
+            width: 0%;
+            transition: width 0.4s ease;
+            border-radius: 5px;
+        }
+
+        .progress-fill.warning {
+            background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
+        }
+
+        .progress-fill.danger {
+            background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .diagram-section {
+                grid-column: 1;
+                grid-row: auto;
+            }
+
+            .history-section {
+                grid-column: 1;
+            }
+
+            .results-wrapper {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 2.2em;
+            }
+
+            header p {
+                font-size: 1em;
+            }
+
+            .main-content {
+                padding: 20px;
+                gap: 20px;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+        }
+
+        .organ-label {
+            font-size: 12px;
+            fill: #1a3a52;
+            pointer-events: none;
+            font-weight: 600;
+        }
+
+        .patient-data-display {
+            background: linear-gradient(135deg, #e8f4fa 0%, #f0f7ff 100%);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            border-left: 6px solid #4a9fd8;
+            box-shadow: 0 3px 10px rgba(74, 159, 216, 0.12);
+            border-top: 2px solid #4a9fd8;
+        }
+
+        .patient-data-display p {
+            margin: 7px 0;
+            font-size: 0.95em;
+            color: #1a3a52;
+        }
+
+        .patient-data-display strong {
+            color: #0e1b2e;
+            font-weight: 800;
+        }
+
+        /* Contact Section */
+        .contact-section {
+            background: linear-gradient(135deg, #0e1b2e 0%, #1a3a52 50%, #2d5f7f 100%);
+            color: white;
+            padding: 50px 40px;
+            text-align: center;
+            border-top: 4px solid #4a9fd8;
+        }
+
+        .contact-section h2 {
+            font-size: 2em;
+            margin-bottom: 30px;
+            font-weight: 800;
+            letter-spacing: 1px;
+        }
+
+        .contact-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .contact-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 25px;
+            border-radius: 12px;
+            border: 2px solid rgba(74, 159, 216, 0.3);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .contact-card:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: #4a9fd8;
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(74, 159, 216, 0.2);
+        }
+
+        .contact-card h3 {
+            font-size: 1.3em;
+            margin-bottom: 12px;
+            font-weight: 800;
+            color: #4a9fd8;
+        }
+
+        .contact-card p {
+            font-size: 1em;
+            margin: 8px 0;
+            opacity: 0.95;
+            line-height: 1.6;
+        }
+
+        .contact-card a {
+            color: #4a9fd8;
+            text-decoration: none;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            display: inline-block;
+        }
+
+        .contact-card a:hover {
+            color: #64c8ff;
+            text-shadow: 0 0 10px rgba(74, 159, 216, 0.5);
+        }
+
+        .contact-icon {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .contact-info {
+                grid-template-columns: 1fr;
+            }
+            .contact-section {
+                padding: 40px 20px;
+            }
+            .contact-section h2 {
+                font-size: 1.6em;
+            }
+        }
+
+        /* Auth Modal Styles */
+        #authModal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        #authModal.show {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .auth-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 420px;
+            width: 90%;
+            padding: 50px 40px;
+            text-align: center;
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .auth-container h2 {
+            font-size: 1.8em;
+            color: #0e1b2e;
+            margin-bottom: 10px;
+            font-weight: 800;
+        }
+
+        .auth-container p {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 0.95em;
+        }
+
+        .auth-input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .auth-input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #1a3a52;
+            font-weight: 700;
+            font-size: 0.9em;
+        }
+
+        .auth-input-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #dde5f0;
+            border-radius: 8px;
+            font-size: 0.95em;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+        }
+
+        .auth-input-group input:focus {
+            outline: none;
+            border-color: #4a9fd8;
+            box-shadow: 0 0 10px rgba(74, 159, 216, 0.2);
+        }
+
+        .auth-button-group {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .auth-btn {
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .auth-btn-primary {
+            background: linear-gradient(135deg, #0e1b2e 0%, #1a3a52 50%, #2d5f7f 100%);
+            color: white;
+            width: 100%;
+        }
+
+        .auth-btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(14, 27, 46, 0.3);
+        }
+
+        .auth-btn-secondary {
+            background: linear-gradient(135deg, #4a9fd8 0%, #2d5f7f 100%);
+            color: white;
+            width: 100%;
+        }
+
+        .auth-btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(74, 159, 216, 0.3);
+        }
+
+        .auth-toggle {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .auth-toggle a {
+            color: #4a9fd8;
+            text-decoration: none;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .auth-toggle a:hover {
+            text-decoration: underline;
+        }
+
+        .auth-divider {
+            margin: 20px 0;
+            text-align: center;
+            color: #ccc;
+            font-size: 0.85em;
+        }
+
+        .auth-divider::before {
+            content: '';
+            display: block;
+            height: 1px;
+            background: #dde5f0;
+            margin-bottom: 10px;
+        }
+
+        .auth-divider::after {
+            content: '';
+            display: block;
+            height: 1px;
+            background: #dde5f0;
+            margin-top: 10px;
+        }
+
+        .social-auth-buttons {
+            display: grid;
+            gap: 10px;
+        }
+
+        .social-btn {
+            padding: 12px;
+            border: 2px solid #dde5f0;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .social-btn:hover {
+            border-color: #4a9fd8;
+            background: #f0f7ff;
+        }
+
+        /* Header User Info */
+        .header-user-info {
+            position: absolute;
+            top: 20px;
+            right: 40px;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-email {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        .logout-btn {
+            padding: 8px 16px;
+            background: rgba(255, 0, 0, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 0.85em;
+            transition: all 0.3s ease;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 0, 0, 0.5);
+            border-color: white;
+        }
+
+        #mainApp {
+            display: none;
+        }
+
+        #mainApp.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <!-- Authentication Modal -->
+    <div id="authModal" class="show">
+        <div class="auth-container">
+            <!-- Login Form -->
+            <div id="loginForm">
+                <h2>🔐 Sign In</h2>
+                <p>Access your dose history</p>
+                <div class="auth-input-group">
+                    <label for="loginEmail">Email Address</label>
+                    <input type="email" id="loginEmail" placeholder="your@email.com" required>
+                </div>
+                <div class="auth-input-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" placeholder="••••••••" required>
+                </div>
+                <div class="auth-button-group">
+                    <button class="auth-btn auth-btn-primary" onclick="handleLogin()">Sign In</button>
+                </div>
+                <p class="auth-toggle">Don't have an account? <a onclick="toggleAuthForm()">Create one</a></p>
+            </div>
+
+            <!-- Signup Form -->
+            <div id="signupForm" style="display: none;">
+                <h2>👤 Create Account</h2>
+                <p>Start tracking your dose history</p>
+                <div class="auth-input-group">
+                    <label for="signupName">Full Name</label>
+                    <input type="text" id="signupName" placeholder="Your name" required>
+                </div>
+                <div class="auth-input-group">
+                    <label for="signupEmail">Email Address</label>
+                    <input type="email" id="signupEmail" placeholder="your@email.com" required>
+                </div>
+                <div class="auth-input-group">
+                    <label for="signupPassword">Password</label>
+                    <input type="password" id="signupPassword" placeholder="••••••••" required>
+                </div>
+                <div class="auth-button-group">
+                    <button class="auth-btn auth-btn-primary" onclick="handleSignup()">Create Account</button>
+                </div>
+                <p class="auth-toggle">Already have an account? <a onclick="toggleAuthForm()">Sign In</a></p>
+            </div>
+
+            <div id="authError" style="color: #ef4444; font-weight: 700; margin-top: 15px; display: none;"></div>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="mainApp">
+    <div class="container">
+        <header>
+            <h1>☢️ RADIOLOGY DOSE CALCULATOR</h1>
+            <p>Advanced Radiation Exposure Monitoring & Assessment System</p>
+            <div class="header-user-info">
+                <span class="user-email" id="userEmailDisplay"></span>
+                <button class="logout-btn" onclick="handleLogout()">🚪 Logout</button>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- Input Section -->
+            <div class="input-section">
+                <h2 class="section-title">👤 Patient Information</h2>
+                
+                <div id="alertContainer"></div>
+
+                <div class="form-group">
+                    <label for="patientName">Patient Full Name *</label>
+                    <input type="text" id="patientName" placeholder="e.g., Hussien Ibrahim Elbanna" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="patientID">Patient ID *</label>
+                    <input type="text" id="patientID" placeholder="e.g., P12345" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Examination Type *</label>
+                    <div class="exam-type-group">
+                        <button class="exam-type-btn active" data-exam-type="CT">CT Scan</button>
+                        <button class="exam-type-btn" data-exam-type="XRay">X-Ray</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="dlpValue">DLP Value (mGy·cm) *</label>
+                    <input type="number" id="dlpValue" placeholder="Enter DLP measurement" min="0" step="0.1" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="thresholdLimit">Safety Threshold (mSv)</label>
+                    <input type="number" id="thresholdLimit" placeholder="Default: 100" value="100" min="10" step="10">
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-calculate" onclick="calculateDose()">Calculate Dose</button>
+                    <button class="btn-reset" onclick="resetForm()">Reset</button>
+                </div>
+
+                <div id="patientDataDisplay" class="patient-data-display" style="display: none;">
+                    <p>👤 <strong>Patient:</strong> <span id="displayPatientName"></span></p>
+                    <p>🆔 <strong>ID:</strong> <span id="displayPatientID"></span></p>
+                    <p>🖥️ <strong>Exam:</strong> <span id="displayExamType"></span></p>
+                </div>
+            </div>
+
+            <!-- Body Diagram Section -->
+            <div class="diagram-section">
+                <h2 class="section-title">🫀 Select Body Region</h2>
+                <p style="color: #4a9fd8; font-size: 0.92em; margin-bottom: 15px; font-weight: 500; letter-spacing: 0.3px;">Click on the desired body region to select it for dose calculation</p>
+                <div class="body-diagram">
+                    <svg viewBox="0 0 200 500" width="180" height="500">
+                        <!-- Head -->
+                        <circle class="body-part" id="head" cx="100" cy="45" r="25" data-organ="Head" data-kfactor="0.0011" onclick="selectOrgan(this)">
+                            <title>Head (k-factor: 0.0011)</title>
+                        </circle>
+                        <text class="organ-label" x="100" y="48" text-anchor="middle" font-size="11">Head</text>
+
+                        <!-- Neck -->
+                        <rect class="body-part" id="neck" x="92" y="70" width="16" height="18" data-organ="Neck" data-kfactor="0.0026" onclick="selectOrgan(this)">
+                            <title>Neck (k-factor: 0.0026)</title>
+                        </rect>
+                        <text class="organ-label" x="100" y="82" text-anchor="middle" font-size="10">Neck</text>
+
+                        <!-- Shoulders -->
+                        <path d="M 70 88 Q 70 80 100 82 Q 130 80 130 88" class="body-part" id="shoulders" fill="none" stroke="#e9ecef" stroke-width="2" style="pointer-events: none;"></path>
+
+                        <!-- Chest/Torso - Main body -->
+                        <path class="body-part" id="chest" d="M 75 88 L 70 140 Q 70 160 75 175 L 100 185 L 125 175 Q 130 160 130 140 L 125 88 Q 100 85 75 88 Z" data-organ="Chest" data-kfactor="0.014" onclick="selectOrgan(this)">
+                            <title>Chest (k-factor: 0.014)</title>
+                        </path>
+                        <text class="organ-label" x="100" y="135" text-anchor="middle" font-size="11">Chest</text>
+
+                        <!-- Abdomen -->
+                        <path class="body-part" id="abdomen" d="M 76 175 L 73 235 Q 73 250 78 260 L 100 265 L 122 260 Q 127 250 127 235 L 124 175 Z" data-organ="Abdomen" data-kfactor="0.015" onclick="selectOrgan(this)">
+                            <title>Abdomen (k-factor: 0.015)</title>
+                        </path>
+                        <text class="organ-label" x="100" y="220" text-anchor="middle" font-size="11">Abdomen</text>
+
+                        <!-- Pelvis/Hips -->
+                        <path class="body-part" id="pelvis" d="M 70 260 Q 65 280 70 300 L 100 310 L 130 300 Q 135 280 130 260 Z" data-organ="Pelvis" data-kfactor="0.012" onclick="selectOrgan(this)">
+                            <title>Pelvis (k-factor: 0.012)</title>
+                        </path>
+                        <text class="organ-label" x="100" y="290" text-anchor="middle" font-size="11">Pelvis</text>
+
+                        <!-- Left Upper Arm (Right side) -->
+                        <path class="body-part" id="leftArmUpper" d="M 130 95 Q 150 110 152 145 L 142 146 Q 140 115 125 100 Z" data-organ="Left Arm" data-kfactor="0.0008" onclick="selectOrgan(this)">
+                            <title>Left Arm (k-factor: 0.0008)</title>
+                        </path>
+
+                        <!-- Left Forearm (Right side) -->
+                        <path class="body-part" id="leftArmLower" d="M 152 145 Q 165 165 168 200 L 158 201 Q 155 170 142 146 Z" data-organ="Left Arm" data-kfactor="0.0008" onclick="selectOrgan(this)">
+                            <title>Left Arm (k-factor: 0.0008)</title>
+                        </path>
+
+                        <!-- Left Hand (Right side) -->
+                        <path class="body-part" id="leftHand" d="M 168 200 Q 175 215 172 230 L 162 228 Q 164 215 158 201 Z" data-organ="Left Arm" data-kfactor="0.0008" onclick="selectOrgan(this)">
+                            <title>Left Arm (k-factor: 0.0008)</title>
+                        </path>
+
+                        <!-- Right Upper Arm (Left side) -->
+                        <path class="body-part" id="rightArmUpper" d="M 70 95 Q 50 110 48 145 L 58 146 Q 60 115 75 100 Z" data-organ="Right Arm" data-kfactor="0.0008" onclick="selectOrgan(this)">
+                            <title>Right Arm (k-factor: 0.0008)</title>
+                        </path>
+
+                        <!-- Right Forearm (Left side) -->
+                        <path class="body-part" id="rightArmLower" d="M 48 145 Q 35 165 32 200 L 42 201 Q 45 170 58 146 Z" data-organ="Right Arm" data-kfactor="0.0008" onclick="selectOrgan(this)">
+                            <title>Right Arm (k-factor: 0.0008)</title>
+                        </path>
+
+                        <!-- Right Hand (Left side) -->
+                        <path class="body-part" id="rightHand" d="M 32 200 Q 25 215 28 230 L 38 228 Q 36 215 42 201 Z" data-organ="Right Arm" data-kfactor="0.0008" onclick="selectOrgan(this)">
+                            <title>Right Arm (k-factor: 0.0008)</title>
+                        </path>
+
+                        <!-- Left Thigh (Right side) -->
+                        <path class="body-part" id="leftThigh" d="M 120 310 Q 125 330 127 370 L 115 371 Q 113 335 108 310 Z" data-organ="Left Leg" data-kfactor="0.0009" onclick="selectOrgan(this)">
+                            <title>Left Leg (k-factor: 0.0009)</title>
+                        </path>
+
+                        <!-- Left Calf/Shin (Right side) -->
+                        <path class="body-part" id="leftCalf" d="M 127 370 Q 132 400 130 440 L 120 440 Q 122 405 115 371 Z" data-organ="Left Leg" data-kfactor="0.0009" onclick="selectOrgan(this)">
+                            <title>Left Leg (k-factor: 0.0009)</title>
+                        </path>
+
+                        <!-- Left Foot (Right side) -->
+                        <path class="body-part" id="leftFoot" d="M 130 440 L 135 460 L 115 462 L 118 440 Z" data-organ="Left Leg" data-kfactor="0.0009" onclick="selectOrgan(this)">
+                            <title>Left Leg (k-factor: 0.0009)</title>
+                        </path>
+
+                        <!-- Right Thigh (Left side) -->
+                        <path class="body-part" id="rightThigh" d="M 80 310 Q 75 330 73 370 L 85 371 Q 87 335 92 310 Z" data-organ="Right Leg" data-kfactor="0.0009" onclick="selectOrgan(this)">
+                            <title>Right Leg (k-factor: 0.0009)</title>
+                        </path>
+
+                        <!-- Right Calf/Shin (Left side) -->
+                        <path class="body-part" id="rightCalf" d="M 73 370 Q 68 400 70 440 L 80 440 Q 78 405 85 371 Z" data-organ="Right Leg" data-kfactor="0.0009" onclick="selectOrgan(this)">
+                            <title>Right Leg (k-factor: 0.0009)</title>
+                        </path>
+
+                        <!-- Right Foot (Left side) -->
+                        <path class="body-part" id="rightFoot" d="M 70 440 L 65 460 L 85 462 L 82 440 Z" data-organ="Right Leg" data-kfactor="0.0009" onclick="selectOrgan(this)">
+                            <title>Right Leg (k-factor: 0.0009)</title>
+                        </path>
+
+                        <!-- Optional: Body outline for better definition -->
+                        <defs>
+                            <filter id="bodyGlow">
+                                <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
+                                <feMerge>
+                                    <feMergeNode in="coloredBlur"/>
+                                    <feMergeNode in="SourceGraphic"/>
+                                </feMerge>
+                            </filter>
+                        </defs>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div class="results-section">
+                <h2 class="section-title">📊 Dose Results</h2>
+                <div class="results-wrapper">
+                    <div class="result-card">
+                        <div class="result-label">Selected Region</div>
+                        <div class="result-value" id="selectedOrgan">—</div>
+                    </div>
+                    <div class="result-card">
+                        <div class="result-label">Effective Dose</div>
+                        <div class="result-value" id="effectiveDose">—</div>
+                        <div class="result-unit">mSv (millisieverts)</div>
+                    </div>
+                    <div class="result-card">
+                        <div class="result-label">Cumulative Dose</div>
+                        <div class="result-value" id="cumulativeDose">—</div>
+                        <div class="result-unit">mSv (total)</div>
+                    </div>
+                    <div class="result-card">
+                        <div class="result-label">Dose Percentage</div>
+                        <div class="result-value" id="dosePercentage">—</div>
+                        <div class="result-unit">% of safety limit</div>
+                    </div>
+                </div>
+                <div id="doseProgressContainer" style="display: none;">
+                    <div style="margin-top: 20px;">
+                        <p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">Cumulative Dose Progress</p>
+                        <div class="dose-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="button-group" style="margin-top: 20px;">
+                    <button class="btn-export" id="exportBtn" onclick="exportToExcel()" disabled>
+                        Export to Excel
+                    </button>
+                    <button class="btn-clear" onclick="clearHistory()">Clear History</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Section -->
+        <div class="history-section">
+            <h2 class="section-title">📋 Dose History & Cumulative Tracking</h2>
+            <div id="historyContainer">
+                <div class="no-history">📭 No dose records found. Enter patient information and calculate a dose to initiate patient tracking.</div>
+            </div>
+        </div>
+
+        <!-- Contact Section -->
+        <div class="contact-section">
+            <h2>📞 Get In Touch</h2>
+            <div class="contact-info">
+                <!-- Name Card -->
+                <div class="contact-card">
+                    <span class="contact-icon">👤</span>
+                    <h3>Contact Person</h3>
+                    <p><strong>Hussien Ibrahim Galal</strong></p>
+                    <p style="font-size: 0.9em; opacity: 0.8;">Radiology Specialist</p>
+                </div>
+
+                <!-- Phone Card -->
+                <div class="contact-card">
+                    <span class="contact-icon">📱</span>
+                    <h3>Phone</h3>
+                    <p><a href="tel:+201158136157">+201158136157</a></p>
+                    <p style="font-size: 0.85em; opacity: 0.8;">Call or SMS</p>
+                </div>
+
+                <!-- WhatsApp Card -->
+                <div class="contact-card">
+                    <span class="contact-icon">💬</span>
+                    <h3>WhatsApp</h3>
+                    <p><a href="https://wa.me/201158136157" target="_blank">+201158136157</a></p>
+                    <p style="font-size: 0.85em; opacity: 0.8;">Chat with us</p>
+                </div>
+
+                <!-- Gmail Card -->
+                <div class="contact-card">
+                    <span class="contact-icon">✉️</span>
+                    <h3>Email</h3>
+                    <p><a href="mailto:helbanna184@gmail.com">helbanna184@gmail.com</a></p>
+                    <p style="font-size: 0.85em; opacity: 0.8;">Send an email</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <script type="module">
+
+        import { initializeApp } from "firebase/app";
+        import { getAnalytics } from "firebase/analytics";
+        
+        // ============================================================
+        // FIREBASE CONFIGURATION
+        // Replace with your actual Firebase config from Google Console
+        // ============================================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyB5nGO8f85R1dUOydKNISzKQ7Zs-bH18-Y",
+            authDomain: "radiation-dose-calculato-5a480.firebaseapp.com",
+            projectId: "radiation-dose-calculato-5a480",
+            storageBucket: "radiation-dose-calculato-5a480.firebasestorage.app",
+            messagingSenderId: "181282122695",
+            appId: "1:181282122695:web:e85c421abec8824d2347e2",
+            measurementId: "G-R95XZN9R34"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+
+        // Current logged-in user
+        let currentUser = null;
+
+        // Application State
+        const appState = {
+            currentPatientID: null,
+            currentPatientName: null,
+            currentExamType: 'CT',
+            selectedOrgan: null,
+            dlpValue: null,
+            thresholdLimit: 20,
+            doseHistory: {}
+        };
+
+        // ============================================================
+        // AUTHENTICATION FUNCTIONS
+        // ============================================================
+        function toggleAuthForm() {
+            document.getElementById('loginForm').style.display = document.getElementById('loginForm').style.display === 'none' ? 'block' : 'none';
+            document.getElementById('signupForm').style.display = document.getElementById('signupForm').style.display === 'none' ? 'block' : 'none';
+            document.getElementById('authError').style.display = 'none';
+        }
+
+        function showAuthError(message) {
+            document.getElementById('authError').textContent = '❌ ' + message;
+            document.getElementById('authError').style.display = 'block';
+        }
+
+        function handleLogin() {
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value;
+
+            if (!email || !password) {
+                showAuthError('Please fill in all fields');
+                return;
+            }
+
+            auth.signInWithEmailAndPassword(email, password)
+                .then(userCredential => {
+                    console.log('User logged in:', userCredential.user.email);
+                })
+                .catch(error => {
+                    showAuthError(error.message);
+                });
+        }
+
+        function handleSignup() {
+            const name = document.getElementById('signupName').value.trim();
+            const email = document.getElementById('signupEmail').value.trim();
+            const password = document.getElementById('signupPassword').value;
+
+            if (!name || !email || !password) {
+                showAuthError('Please fill in all fields');
+                return;
+            }
+
+            if (password.length < 6) {
+                showAuthError('Password must be at least 6 characters');
+                return;
+            }
+
+            auth.createUserWithEmailAndPassword(email, password)
+                .then(userCredential => {
+                    // Save user profile to Firestore
+                    const userId = userCredential.user.uid;
+                    return db.collection('users').doc(userId).set({
+                        name: name,
+                        email: email,
+                        createdAt: new Date(),
+                        doseHistory: []
+                    });
+                })
+                .then(() => {
+                    console.log('User account created successfully');
+                })
+                .catch(error => {
+                    showAuthError(error.message);
+                });
+        }
+
+        function handleLogout() {
+            if (confirm('Are you sure you want to logout?')) {
+                auth.signOut()
+                    .then(() => {
+                        console.log('User logged out');
+                    })
+                    .catch(error => {
+                        console.error('Logout error:', error);
+                    });
+            }
+        }
+
+        // ============================================================
+        // AUTH STATE MONITORING
+        // ============================================================
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                // User is signed in
+                currentUser = user;
+                document.getElementById('authModal').classList.remove('show');
+                document.getElementById('mainApp').classList.add('show');
+                document.getElementById('userEmailDisplay').textContent = '👤 ' + user.email;
+
+                // Load user's dose history from Firestore
+                await loadDoseHistoryFromFirestore(user.uid);
+            } else {
+                // User is signed out
+                currentUser = null;
+                document.getElementById('authModal').classList.add('show');
+                document.getElementById('mainApp').classList.remove('show');
+                appState.doseHistory = {};
+            }
+        });
+
+        // ============================================================
+        // FIRESTORE DATABASE FUNCTIONS
+        // ============================================================
+        async function loadDoseHistoryFromFirestore(userId) {
+            try {
+                const userDoc = await db.collection('users').doc(userId).get();
+                if (userDoc.exists) {
+                    const userData = userDoc.data();
+                    // Convert array back to object format
+                    appState.doseHistory = {};
+                    if (userData.doseHistory && Array.isArray(userData.doseHistory)) {
+                        userData.doseHistory.forEach(record => {
+                            const patientID = record.patientID;
+                            if (!appState.doseHistory[patientID]) {
+                                appState.doseHistory[patientID] = {
+                                    patientName: record.patientName,
+                                    records: []
+                                };
+                            }
+                            appState.doseHistory[patientID].records.push(record);
+                        });
+                    }
+                    updateHistoryDisplay();
+                }
+            } catch (error) {
+                console.error('Error loading dose history:', error);
+            }
+        }
+
+        async function saveDoseHistoryToFirestore() {
+            if (!currentUser) return;
+
+            try {
+                // Convert dose history object to array for Firestore
+                const historyArray = [];
+                for (const [patientID, patientData] of Object.entries(appState.doseHistory)) {
+                    patientData.records.forEach(record => {
+                        historyArray.push({
+                            ...record,
+                            patientID: patientID,
+                            patientName: patientData.patientName
+                        });
+                    });
+                }
+
+                await db.collection('users').doc(currentUser.uid).update({
+                    doseHistory: historyArray,
+                    lastUpdated: new Date()
+                });
+
+                console.log('Dose history saved to Firestore');
+            } catch (error) {
+                console.error('Error saving dose history:', error);
+            }
+        }
+
+        // ============================================================
+        // LEGACY FUNCTIONS (Modified for Firestore)
+        // ============================================================
+        function saveDoseHistory() {
+            saveDoseHistoryToFirestore();
+        }
+
+        function loadDoseHistory() {
+            // Now handled by Firebase auth state listener
+        }
+
+        // K-factors for different body regions (Effective Dose Conversion Factor)
+        const kFactors = {
+            'Head': 0.0011,
+            'Neck': 0.0026,
+            'Chest': 0.014,
+            'Abdomen': 0.015,
+            'Pelvis': 0.012,
+            'Left Arm': 0.0008,
+            'Right Arm': 0.0008,
+            'Left Leg': 0.0009,
+            'Right Leg': 0.0009
+        };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDoseHistory();
+            setupExamTypeButtons();
+            setupBodyPartClicks();
+            
+            // Backup: retry setup after delay
+            setTimeout(function() {
+                const bodyParts = document.querySelectorAll('.body-part');
+                if (bodyParts.length === 0) {
+                    console.warn('Body parts not found, retrying...');
+                    setupBodyPartClicks();
+                }
+            }, 500);
+        });
+
+        // Setup exam type selection
+        function setupExamTypeButtons() {
+            document.querySelectorAll('.exam-type-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.exam-type-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    appState.currentExamType = this.dataset.examType;
+                });
+            });
+        }
+
+        // Setup body part click handlers
+        function setupBodyPartClicks() {
+            console.log('Setting up body part clicks...');
+            const bodyParts = document.querySelectorAll('.body-part');
+            console.log('Found ' + bodyParts.length + ' body parts');
+            
+            bodyParts.forEach(part => {
+                part.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    console.log('Clicked:', this.dataset.organ);
+                    selectOrgan(this);
+                });
+            });
+        }
+
+        // Select an organ
+        function selectOrgan(element) {
+            try {
+                console.log('Selecting organ:', element, element.dataset.organ);
+                
+                // Remove previous selection
+                document.querySelectorAll('.body-part.selected').forEach(el => {
+                    el.classList.remove('selected');
+                });
+
+                // Add selection to clicked element
+                element.classList.add('selected');
+                appState.selectedOrgan = element.dataset.organ;
+                
+                showAlert(`✅ Selected: ${element.dataset.organ}. Enter DLP value and click "Calculate Dose".`, 'success');
+            } catch(err) {
+                console.error('Error in selectOrgan:', err);
+                alert('Error selecting organ: ' + err.message);
+            }
+        }
+
+        // Calculate dose
+        function calculateDose() {
+            // Validate inputs
+            const patientName = document.getElementById('patientName').value.trim();
+            const patientID = document.getElementById('patientID').value.trim();
+            const dlpValue = parseFloat(document.getElementById('dlpValue').value);
+            const threshold = parseFloat(document.getElementById('thresholdLimit').value) || 100;
+
+            if (!patientName || !patientID || isNaN(dlpValue) || dlpValue <= 0) {
+                showAlert('Please fill in patient name, ID, and DLP value', 'error');
+                return;
+            }
+
+            if (!appState.selectedOrgan) {
+                showAlert('Please select a body region from the anatomy diagram first', 'error');
+                return;
+            }
+
+            appState.currentPatientID = patientID;
+            appState.currentPatientName = patientName;
+            appState.dlpValue = dlpValue;
+            appState.thresholdLimit = threshold;
+
+            const organName = appState.selectedOrgan;
+            const kFactor = kFactors[organName];
+            const effectiveDose = (dlpValue * kFactor).toFixed(4);
+            const examType = appState.currentExamType;
+
+            // Initialize history for this patient if not exists
+            if (!appState.doseHistory[patientID]) {
+                appState.doseHistory[patientID] = {
+                    patientName: patientName,
+                    records: []
+                };
+            }
+
+            // Add new record
+            const record = {
+                'Date': new Date().toLocaleDateString(),
+                'Time': new Date().toLocaleTimeString(),
+                'Exam Type': examType,
+                'Body Region': organName,
+                'DLP (mGy·cm)': dlpValue.toFixed(2),
+                'K-Factor': kFactor,
+                'Effective Dose (mSv)': effectiveDose
+            };
+
+            appState.doseHistory[patientID].records.push(record);
+
+            // Update results display
+            document.getElementById('selectedOrgan').textContent = organName;
+            document.getElementById('effectiveDose').textContent = effectiveDose;
+            document.getElementById('effectiveDose').className = 'result-value';
+
+            // Update patient display
+            document.getElementById('patientDataDisplay').style.display = 'block';
+            document.getElementById('displayPatientName').textContent = patientName;
+            document.getElementById('displayPatientID').textContent = patientID;
+            document.getElementById('displayExamType').textContent = examType;
+
+            // Update cumulative dose
+            updateCumulativeDoseDisplay();
+
+            // Show export button
+            document.getElementById('exportBtn').disabled = false;
+
+            saveDoseHistory();
+            updateHistoryDisplay();
+
+            showAlert('✅ Dose calculated and saved successfully! Click "Export to Excel" to download patient records.', 'success');
+        }
+
+        // Export to Excel
+        function exportToExcel() {
+            const patientID = appState.currentPatientID;
+            const patientName = appState.currentPatientName;
+
+            if (!patientID || !appState.doseHistory[patientID]) {
+                showAlert('No patient data to export. Please calculate a dose first.', 'error');
+                return;
+            }
+
+            const patientData = appState.doseHistory[patientID];
+            const records = patientData.records || [];
+
+            if (records.length === 0) {
+                showAlert('No records to export for this patient.', 'error');
+                return;
+            }
+
+            const cumulativeDose = records.reduce((sum, rec) => {
+                return sum + parseFloat(rec['Effective Dose (mSv)']);
+            }, 0).toFixed(4);
+
+            const dosePercentage = ((cumulativeDose / appState.thresholdLimit) * 100).toFixed(2);
+
+            // Show export confirmation dialog
+            showExportDialog(patientID, patientName, cumulativeDose, dosePercentage, records);
+        }
+
+        // Show export confirmation dialog
+        function showExportDialog(patientID, patientName, cumulativeDose, dosePercentage, records) {
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.5);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 9999;
+                backdrop-filter: blur(5px);
+            `;
+
+            const content = document.createElement('div');
+            content.style.cssText = `
+                background: white;
+                padding: 40px;
+                border-radius: 15px;
+                max-width: 500px;
+                width: 90%;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                text-align: center;
+            `;
+
+            content.innerHTML = `
+                <h2 style="color: #0e1b2e; margin-bottom: 20px; font-size: 1.6em; font-weight: 800;">📊 Export Patient Data</h2>
+                
+                <div style="background: #f0f7ff; padding: 20px; border-radius: 10px; margin-bottom: 25px; border-left: 4px solid #4a9fd8;">
+                    <p style="color: #4a9fd8; font-weight: 700; margin: 8px 0;">👤 Patient: <strong>${patientName}</strong></p>
+                    <p style="color: #1a3a52; font-weight: 700; margin: 8px 0;">🆔 ID: <strong>${patientID}</strong></p>
+                    <p style="color: #1a3a52; font-weight: 700; margin: 8px 0;">📋 Total Records: <strong>${records.length}</strong></p>
+                    <p style="color: #ef4444; font-weight: 700; margin: 8px 0;">💉 Cumulative Dose: <strong>${cumulativeDose} mSv</strong></p>
+                </div>
+
+                <p style="color: #374151; margin-bottom: 25px; font-size: 0.95em; line-height: 1.6;">
+                    <strong>📁 Saving Instructions:</strong><br>
+                    The file will download. Save it to a folder named by Patient ID.<br>
+                    <span style="color: #4a9fd8; font-weight: 700;">Next time: Open the same file and add new doses!</span>
+                </p>
+
+                <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+                    <input type="text" id="exportFileName" placeholder="Example: P001_Hussien_Ibrahim_Elbanna.xlsx" 
+                           style="flex: 1; padding: 12px; border: 2px solid #dde5f0; border-radius: 8px; font-size: 0.9em;">
+                </div>
+
+                <div style="display: flex; gap: 12px;">
+                    <button id="exportConfirmBtn" 
+                            style="flex: 1; padding: 14px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 8px; font-weight: 800; cursor: pointer; text-transform: uppercase;">
+                        ✅ Download Excel
+                    </button>
+                    <button onclick="closeExportDialog()" 
+                            style="flex: 1; padding: 14px; background: #dde5f0; color: #374151; border: none; border-radius: 8px; font-weight: 800; cursor: pointer; text-transform: uppercase;">
+                        ❌ Cancel
+                    </button>
+                </div>
+
+                <p style="color: #9ca3af; font-size: 0.85em; margin-top: 15px;">
+                    💡 Pro Tip: Use patient ID in filename. Reopen the same file to add more dose records!
+                </p>
+            `;
+
+            modal.appendChild(content);
+            document.body.appendChild(modal);
+
+            window.currentExportModal = modal;
+            window.currentExportData = { patientID, patientName, records };
+
+            // Attach event listener to the button
+            setTimeout(() => {
+                document.getElementById('exportConfirmBtn').addEventListener('click', doExportConfirm);
+            }, 100);
+        }
+
+        // Close export dialog
+        function closeExportDialog() {
+            if (window.currentExportModal) {
+                window.currentExportModal.remove();
+            }
+        }
+
+        // Confirm export and trigger the download
+        function doExportConfirm() {
+            if (!window.currentExportData) {
+                showAlert('Error: No export data found', 'error');
+                return;
+            }
+
+            const { patientID, patientName, records } = window.currentExportData;
+            const fileNameInput = document.getElementById('exportFileName');
+            let fileName = fileNameInput ? fileNameInput.value.trim() : '';
+            
+            if (!fileName) {
+                fileName = `${patientID}_${patientName.replace(/\s+/g, '_')}_Dose_Report.xlsx`;
+            } else if (!fileName.endsWith('.xlsx')) {
+                fileName += '.xlsx';
+            }
+
+            performExport(patientID, patientName, records, fileName);
+        }
+
+        // Perform the actual export
+        function performExport(patientID, patientName, records, fileName) {
+            try {
+                const cumulativeDose = records.reduce((sum, rec) => {
+                    return sum + parseFloat(rec['Effective Dose (mSv)']);
+                }, 0).toFixed(4);
+
+                const dosePercentage = ((cumulativeDose / appState.thresholdLimit) * 100).toFixed(2);
+
+                // Create workbook
+                const wb = XLSX.utils.book_new();
+
+                // Patient Summary Sheet
+                const summaryData = [
+                    ['PATIENT DOSE REPORT'],
+                    [],
+                    ['Patient Name:', patientName],
+                    ['Patient ID:', patientID],
+                    ['Safety Threshold (mSv):', appState.thresholdLimit],
+                    ['Total Cumulative Dose (mSv):', cumulativeDose],
+                    ['Dose Percentage of Limit:', dosePercentage + '%'],
+                    ['Report Generated:', new Date().toLocaleString()],
+                    ['Total Examinations:', records.length],
+                    [],
+                    ['EXAMINATION RECORDS']
+                ];
+
+                const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+                wsSummary['A1'].font = { bold: true, size: 16, color: { rgb: 'FFFFFF' } };
+                wsSummary['A1'].fill = { fgColor: { rgb: '1a3a52' } };
+                wsSummary['!cols'] = [{ wch: 30 }, { wch: 30 }];
+                
+                XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+
+                // Detailed History Sheet
+                const historyData = [
+                    ['Date', 'Time', 'Exam Type', 'Body Region', 'DLP (mGy·cm)', 'K-Factor', 'Effective Dose (mSv)']
+                ];
+
+                records.forEach(rec => {
+                    historyData.push([
+                        rec.Date,
+                        rec.Time,
+                        rec['Exam Type'],
+                        rec['Body Region'],
+                        rec['DLP (mGy·cm)'],
+                        rec['K-Factor'],
+                        rec['Effective Dose (mSv)']
+                    ]);
+                });
+
+                historyData.push([]);
+                historyData.push(['SUMMARY STATISTICS']);
+                historyData.push(['Total Records:', records.length]);
+                historyData.push(['Cumulative Dose (mSv):', cumulativeDose]);
+                historyData.push(['Safety Threshold (mSv):', appState.thresholdLimit]);
+                historyData.push(['Percentage Used:', dosePercentage + '%']);
+
+                if (dosePercentage > 80) {
+                    historyData.push(['', '⚠️ CRITICAL: Dose approaches safety limit!']);
+                } else if (dosePercentage > 50) {
+                    historyData.push(['', '⚡ WARNING: Patient exceeded 50% of safety threshold']);
+                }
+
+                const wsHistory = XLSX.utils.aoa_to_sheet(historyData);
+                
+                // Format header row
+                for (let i = 0; i < 7; i++) {
+                    const cellRef = XLSX.utils.encode_cell({ r: 0, c: i });
+                    wsHistory[cellRef].font = { bold: true, color: { rgb: 'FFFFFF' } };
+                    wsHistory[cellRef].fill = { fgColor: { rgb: '2d5f7f' } };
+                }
+
+                wsHistory['!cols'] = [
+                    { wch: 15 },
+                    { wch: 15 },
+                    { wch: 15 },
+                    { wch: 20 },
+                    { wch: 18 },
+                    { wch: 12 },
+                    { wch: 20 }
+                ];
+
+                XLSX.utils.book_append_sheet(wb, wsHistory, 'Dose History');
+
+                // Save file
+                XLSX.writeFile(wb, fileName);
+
+                closeExportDialog();
+                showAlert(`✅ Excel file "${fileName}" downloaded!\n\n💾 Save it to your hard drive.\n📝 Open the same file next time to add more dose records for the same patient!`, 'success');
+                
+            } catch (error) {
+                console.error('Export error:', error);
+                showAlert('❌ Error exporting Excel file. Please try again. Error: ' + error.message, 'error');
+            }
+        }
+
+        // Export all patients to master Excel file
+        function exportToMasterExcel() {
+            const wb = XLSX.utils.book_new();
+
+            // Summary sheet
+            const summaryData = [];
+            summaryData.push(['DOSE TRACKING MASTER FILE']);
+            summaryData.push(['Generated on', new Date().toLocaleString()]);
+            summaryData.push([]);
+            summaryData.push(['PATIENT SUMMARY']);
+            summaryData.push(['Patient ID', 'Patient Name', 'Total Records', 'Cumulative Dose (mSv)', 'Dose % of 100mSv', 'Last Exam']);
+
+            for (const [patientID, patientData] of Object.entries(appState.doseHistory)) {
+                const records = patientData.records || [];
+                if (records.length === 0) continue;
+
+                const cumulativeDose = records.reduce((sum, rec) => {
+                    return sum + parseFloat(rec['Effective Dose (mSv)']);
+                }, 0).toFixed(4);
+
+                const dosePercentage = ((cumulativeDose / 100) * 100).toFixed(2);
+                const lastExam = records[records.length - 1].Date + ' ' + records[records.length - 1].Time;
+
+                summaryData.push([
+                    patientID,
+                    patientData.patientName || 'N/A',
+                    records.length,
+                    cumulativeDose,
+                    dosePercentage + '%',
+                    lastExam
+                ]);
+            }
+
+            const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+            wsSummary['A1'].font = { bold: true, size: 14, color: { rgb: 'FFFFFF' } };
+            wsSummary['A1'].fill = { fgColor: { rgb: '667eea' } };
+            XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+
+            // Add individual patient sheets
+            for (const [patientID, patientData] of Object.entries(appState.doseHistory)) {
+                const records = patientData.records || [];
+                if (records.length === 0) continue;
+
+                const cumulativeDose = records.reduce((sum, rec) => {
+                    return sum + parseFloat(rec['Effective Dose (mSv)']);
+                }, 0).toFixed(4);
+
+                const dosePercentage = ((cumulativeDose / 100) * 100).toFixed(2);
+
+                // Create sheet data with patient info header
+                const sheetData = [
+                    ['Patient ID:', patientID],
+                    ['Patient Name:', patientData.patientName || 'N/A'],
+                    ['Total Cumulative Dose (mSv):', cumulativeDose],
+                    ['Dose Percentage:', dosePercentage + '%'],
+                    []
+                ];
+
+                // Add records table
+                sheetData.push(['Date', 'Time', 'Exam Type', 'Body Region', 'DLP (mGy·cm)', 'K-Factor', 'Effective Dose (mSv)']);
+                records.forEach(rec => {
+                    sheetData.push([
+                        rec.Date,
+                        rec.Time,
+                        rec['Exam Type'],
+                        rec['Body Region'],
+                        rec['DLP (mGy·cm)'],
+                        rec['K-Factor'],
+                        rec['Effective Dose (mSv)']
+                    ]);
+                });
+
+                const ws = XLSX.utils.aoa_to_sheet(sheetData);
+                // Format header
+                ws['A1'].font = { bold: true };
+                ws['A2'].font = { bold: true };
+                ws['A3'].font = { bold: true };
+                ws['A4'].font = { bold: true };
+
+                // Adjust column widths
+                ws['!cols'] = [
+                    { wch: 15 },
+                    { wch: 15 },
+                    { wch: 15 },
+                    { wch: 20 },
+                    { wch: 15 },
+                    { wch: 12 },
+                    { wch: 18 }
+                ];
+
+                XLSX.utils.book_append_sheet(wb, ws, patientID.substring(0, 31));
+            }
+
+            // Save master file
+            XLSX.writeFile(wb, 'All_Patients_Dose_Report.xlsx');
+        }
+
+        // Reset form
+        function resetForm() {
+            document.getElementById('patientName').value = '';
+            document.getElementById('patientID').value = '';
+            document.getElementById('dlpValue').value = '';
+            document.getElementById('thresholdLimit').value = '100';
+            document.getElementById('selectedOrgan').textContent = '—';
+            document.getElementById('effectiveDose').textContent = '—';
+            document.getElementById('cumulativeDose').textContent = '—';
+            document.getElementById('dosePercentage').textContent = '—';
+            document.getElementById('doseProgressContainer').style.display = 'none';
+            document.getElementById('patientDataDisplay').style.display = 'none';
+            document.getElementById('exportBtn').disabled = true;
+            document.querySelectorAll('.body-part.selected').forEach(el => {
+                el.classList.remove('selected');
+            });
+            appState.selectedOrgan = null;
+            appState.dlpValue = null;
+        }
+
+        // Clear all history
+        function clearHistory() {
+            if (confirm('Are you sure you want to clear all dose history? This cannot be undone.')) {
+                appState.doseHistory = {};
+                saveDoseHistory();
+                updateHistoryDisplay();
+                showAlert('All history cleared successfully', 'success');
+            }
+        }
+
+        // Show alert
+        function showAlert(message, type) {
+            const container = document.getElementById('alertContainer');
+            const alert = document.createElement('div');
+            alert.className = `alert ${type} show`;
+            alert.textContent = message;
+            container.innerHTML = '';
+            container.appendChild(alert);
+
+            setTimeout(() => {
+                alert.classList.remove('show');
+            }, 5000);
+        }
+
+        // Save dose history to localStorage
+        function saveDoseHistory() {
+            localStorage.setItem('doseHistory', JSON.stringify(appState.doseHistory));
+        }
+
+        // Load dose history from localStorage
+        function loadDoseHistory() {
+            const saved = localStorage.getItem('doseHistory');
+            if (saved) {
+                const loadedData = JSON.parse(saved);
+                
+                // Migrate old data format (array) to new format (object with patientName and records)
+                for (const [patientID, data] of Object.entries(loadedData)) {
+                    if (Array.isArray(data)) {
+                        loadedData[patientID] = {
+                            patientName: 'Unknown',
+                            records: data
+                        };
+                    }
+                }
+                
+                appState.doseHistory = loadedData;
+                updateHistoryDisplay();
+            }
+        }
+
+        // Update history display
+        function updateHistoryDisplay() {
+            const container = document.getElementById('historyContainer');
+
+            if (Object.keys(appState.doseHistory).length === 0) {
+                container.innerHTML = '<div class="no-history">📭 No dose records found. Enter patient information and calculate a dose to initiate patient tracking.</div>';
+                return;
+            }
+
+            let html = '';
+
+            for (const [patientID, patientData] of Object.entries(appState.doseHistory)) {
+                const records = patientData.records || [];
+                if (records.length === 0) continue;
+
+                const cumulativeDose = records.reduce((sum, rec) => {
+                    return sum + parseFloat(rec['Effective Dose (mSv)']);
+                }, 0).toFixed(4);
+
+                const dosePercentage = ((cumulativeDose / 100) * 100).toFixed(2);
+                let riskLevel = 'low';
+                let riskColor = '#10b981';
+                let riskIcon = '✅';
+                if (dosePercentage > 80) {
+                    riskLevel = 'critical';
+                    riskColor = '#ef4444';
+                    riskIcon = '⚠️';
+                } else if (dosePercentage > 50) {
+                    riskLevel = 'medium';
+                    riskColor = '#f59e0b';
+                    riskIcon = '⚡';
+                }
+
+                const patientName = patientData.patientName || 'Unknown';
+
+                html += `
+                    <div style="margin-bottom: 30px; padding: 25px; background: white; border-radius: 12px; border-left: 5px solid ${riskColor}; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);">
+                        <h3 style="color: #1a3a52; margin-bottom: 12px; font-size: 1.25em; font-weight: 700;">👤 ${patientID} <span style="color: #6b7280; font-weight: 500;">- ${patientName}</span></h3>
+                        <p style="color: #4a9fd8; margin: 6px 0; font-weight: 600;"><strong>💊 Total Cumulative Dose:</strong> ${cumulativeDose} mSv</p>
+                        <p style="color: #374151; margin: 6px 0;"><strong>📊 Safety Assessment:</strong> <span style="color: ${riskColor}; font-weight: 700;">${riskIcon} ${dosePercentage}% of 100mSv limit</span></p>
+                        <p style="color: #6b7280; margin: 6px 0;"><strong>📋 Total Examinations:</strong> ${records.length}</p>
+                        
+                        <div style="margin-top: 18px;">
+                            <p style="color: #374151; font-size: 0.92em; margin-bottom: 10px; font-weight: 600;">Cumulative Dose Progress</p>
+                            <div class="progress-bar">
+                                <div class="progress-fill${riskLevel === 'critical' ? '.danger' : riskLevel === 'medium' ? '.warning' : ''}" style="width: ${Math.min(dosePercentage, 100)}%;"></div>
+                            </div>
+                        </div>
+
+                        <table class="history-table" style="margin-top: 18px;">
+                            <thead>
+                                <tr>
+                                    <th>📅 Date</th>
+                                    <th>⏱️ Time</th>
+                                    <th>🖥️ Exam Type</th>
+                                    <th>🫀 Body Region</th>
+                                    <th>📏 DLP</th>
+                                    <th>💉 Effective Dose</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${records.map(rec => `
+                                    <tr>
+                                        <td>${rec.Date}</td>
+                                        <td>${rec.Time}</td>
+                                        <td><span style="background: #e8f4fa; padding: 4px 8px; border-radius: 4px; font-weight: 600; color: #4a9fd8;">${rec['Exam Type']}</span></td>
+                                        <td><span style="font-weight: 600; color: #1a3a52;">${rec['Body Region']}</span></td>
+                                        <td>${rec['DLP (mGy·cm)']}</td>
+                                        <td><strong style="color: #4a9fd8;">${rec['Effective Dose (mSv)']} mSv</strong></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        // Update cumulative dose display
+        function updateCumulativeDoseDisplay() {
+            if (!appState.currentPatientID || !appState.doseHistory[appState.currentPatientID]) {
+                document.getElementById('cumulativeDose').textContent = '—';
+                document.getElementById('dosePercentage').textContent = '—';
+                document.getElementById('doseProgressContainer').style.display = 'none';
+                return;
+            }
+
+            const patientData = appState.doseHistory[appState.currentPatientID];
+            const records = patientData.records || [];
+            const cumulativeDose = records.reduce((sum, rec) => {
+                return sum + parseFloat(rec['Effective Dose (mSv)']);
+            }, 0).toFixed(4);
+
+            const dosePercentage = ((cumulativeDose / appState.thresholdLimit) * 100).toFixed(2);
+
+            document.getElementById('cumulativeDose').textContent = cumulativeDose;
+            document.getElementById('cumulativeDose').className = 'result-value';
+
+            document.getElementById('dosePercentage').textContent = dosePercentage + '%';
+            document.getElementById('dosePercentage').className = 'result-value';
+
+            // Update progress bar
+            document.getElementById('doseProgressContainer').style.display = 'block';
+            const progressFill = document.getElementById('progressFill');
+            progressFill.style.width = Math.min(dosePercentage, 100) + '%';
+            progressFill.className = 'progress-fill';
+
+            if (dosePercentage > 80) {
+                progressFill.classList.add('danger');
+                document.getElementById('dosePercentage').classList.add('danger');
+            } else if (dosePercentage > 50) {
+                progressFill.classList.add('warning');
+                document.getElementById('dosePercentage').classList.add('warning');
+            }
+        }
+
+        // Hook export button to also update cumulative dose
+        const originalExportBtn = document.getElementById('exportBtn');
+        originalExportBtn.addEventListener('click', function() {
+            setTimeout(updateCumulativeDoseDisplay, 100);
+        });
+    </script>
+</body>
+</html>
